@@ -29,7 +29,7 @@ except ImportError:
     from tkinter import filedialog, messagebox
     HAS_CUSTOMTKINTER = False
 
-from app_watcher import AppUpdateWatcher
+from app_watcher import AppUpdateWatcher, send_macos_notification
 from backup_registry import BackupRegistry
 from icon_engine import patch_app_icon
 from launchd_manager import LaunchAgentManager
@@ -681,6 +681,25 @@ class IconReplaceGUI:
             HoverTooltip(info_notify, t_notify)
             HoverTooltip(self.sw_notify, t_notify)
 
+            # Test Notification Button
+            row_test_notify = ctk.CTkFrame(self.settings_card, fg_color="transparent")
+            row_test_notify.pack(anchor="w", padx=15, pady=(0, 10), fill="x")
+
+            self.btn_test_notify = ctk.CTkButton(
+                row_test_notify,
+                text="🔔 Test Notification",
+                width=160,
+                height=28,
+                fg_color="#2E344A",
+                hover_color="#3D4461",
+                text_color="#F3F4F6",
+                font=ctk.CTkFont(size=12),
+                command=self._on_test_notification,
+            )
+            self.btn_test_notify.pack(side="left")
+            t_test_notify = "Spawns a test macOS banner notification to verify system alert delivery."
+            HoverTooltip(self.btn_test_notify, t_test_notify)
+
     def _build_permission_card(self, parent) -> None:
         """Permission status card and open System Settings helper."""
         if HAS_CUSTOMTKINTER:
@@ -948,6 +967,12 @@ class IconReplaceGUI:
         val = bool(self.sw_notify.get())
         self.watcher.notifications_enabled = val
         logger.info("Set notifications enabled: %s", val)
+
+    def _on_test_notification(self) -> None:
+        """Trigger a test macOS notification banner."""
+        if not send_macos_notification("IconReplace", "Notification test successful!"):
+            os.system("osascript -e 'display notification \"Notification test successful!\" with title \"IconReplace\"'")
+        logger.info("Triggered test notification banner")
 
     def run(self) -> None:
         """Runs the main GUI event loop."""

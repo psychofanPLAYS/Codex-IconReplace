@@ -1,114 +1,103 @@
 # IconReplace
 
-> Native macOS application icon and branding management utility with automated update persistence and backup verification.
+> Native macOS application icon management utility with automated update persistence and backup verification.
 
 ![IconReplace UI](docs/assets/screenshot.png)
 
-## Overview
+## What it does
 
-**IconReplace** is a specialized macOS utility built with PySide6/CustomTkinter and native macOS system integrations. It enables developers and power users to replace application icons and bundle branding across macOS system and third-party applications. 
+IconReplace changes macOS application icons and keeps them modified. 
 
-To counteract automated application updates that overwrite custom resources, IconReplace configures lightweight `launchd` kernel file watchers (`WatchPaths`) that automatically re-apply custom icon sets upon file modification with zero persistent CPU or memory overhead.
+When macOS apps auto-update, system updaters routinely overwrite custom `.icns` files inside `/Applications`. IconReplace prevents icon reversion by setting up lightweight `launchd` kernel file watchers (`WatchPaths`). When an app update overwrites your icon, the background LaunchAgent catches the file change and re-applies your custom icon automatically. It uses zero background CPU or RAM while idling.
 
----
+## Features
 
-## Key Features
+- **Dark Mode UI**: CustomTkinter desktop interface built specifically for dark mode on macOS Big Sur through Sequoia.
+- **Update Protection**: Registers a native `launchd` service that monitors target bundles in `/Applications` and re-applies custom icons instantly after updates.
+- **Zero Overhead**: Relies on system file events. The watcher uses no persistent CPU or memory when waiting.
+- **Automatic Backups**: Saves SHA-256 verified copies of stock `.icns` assets to `~/.iconreplace_backups/` before making changes.
+- **One-Click Restoration**: Reverts patched application bundles back to factory icons and clears cached assets.
+- **Cache Flushing**: Touches app bundles and runs macOS `lsregister` cache resets to refresh Dock icons without requiring a log out or reboot.
+- **Test Banners**: Includes a built-in notification test button in Settings to verify macOS desktop alert delivery.
 
-- **Liquid Glass Interface**: High-DPI dark-mode user interface designed for macOS Sonoma and Sequoia.
-- **Automated Update Persistence**: Registers a native macOS `launchd` LaunchAgent that monitors target application bundles in `/Applications` and re-applies custom icon sets instantly upon app updates.
-- **Zero-Overhead Daemon**: Uses kernel file system event notifications (`WatchPaths`); consumes 0% background CPU and 0 MB RAM when idle.
-- **Automated Resource Backup**: Pre-modification verification creates checksum-verified backups of original `.icns` resources in `~/.iconreplace_backups/` before applying patches.
-- **Instant Rollback**: One-click restoration of stock bundle assets and icon caches.
-- **Cache Management**: Automatically triggers `touch` on application bundles and resets macOS `dockutil` / `lsregister` caches for immediate Dock visual refresh without system reboot.
+## Requirements and Compatibility
 
----
+- **macOS Version**: macOS 11.0 Big Sur or newer (tested on macOS 14 Sonoma and macOS 15 Sequoia).
+- **Hardware**: Apple Silicon (M1/M2/M3/M4) and Intel Macs.
+- **System Permissions**: App Management or Full Disk Access permissions are needed to modify `.app` bundles in `/Applications`.
 
-## Architecture & System Requirements
+## Project Layout
 
-### Platform Support
-- **Operating System**: macOS 11.0 Big Sur through macOS 15+ Sequoia
-- **Architecture**: Apple Silicon (M1/M2/M3/M4) and Intel x86_64
-- **Permissions**: Requires macOS App Management or Full Disk Access permissions for `/Applications` bundle modifications.
-
-### Repository Structure
 ```
 Codex-IconReplace/
 ├── app/
 │   ├── src/
-│   │   ├── main.py              # CLI & GUI Application Entrypoint
-│   │   ├── gui.py               # CustomTkinter / Liquid Glass UI Architecture
-│   │   ├── icon_engine.py       # Core ICNS Manipulation & Dock Cache Management
-│   │   ├── app_watcher.py       # Event Monitoring & LaunchAgent Dispatch
-│   │   ├── launchd_manager.py   # System LaunchAgent Registration (.plist)
-│   │   └── backup_registry.py   # Checksum & Backup Management
+│   │   ├── main.py              # CLI and GUI entry point
+│   │   ├── gui.py               # CustomTkinter interface
+│   │   ├── icon_engine.py       # ICNS patching and Dock cache resets
+│   │   ├── app_watcher.py       # Event monitoring and macOS notifications
+│   │   ├── launchd_manager.py   # LaunchAgent plist creation and registration
+│   │   └── backup_registry.py   # Checksum and backup management
 │   ├── scripts/
-│   │   ├── build_app.sh         # PyInstaller Standalone Application Builder
-│   │   └── create_icns.py       # PNG-to-ICNS Converter Script
-│   └── tests/                   # Automated Unit Test Suite
+│   │   ├── build_app.sh         # PyInstaller build script
+│   │   └── create_icns.py       # PNG-to-ICNS converter utility
+│   └── tests/                   # Automated unit tests
 ├── docs/assets/
-│   └── screenshot.png           # High-DPI Interface Screenshot
-├── IconReplace.spec             # PyInstaller Packaging Specification
+│   └── screenshot.png           # Interface screenshot
+├── IconReplace.spec             # PyInstaller packaging configuration
 └── README.md
 ```
 
----
+## Running IconReplace
 
-## Installation & Usage
-
-### 1. Running the Standalone Application
-If built using PyInstaller, execute the compiled macOS application bundle:
+### Using the Pre-built App
+Launch the standalone `.app` bundle:
 ```bash
 open IconReplace.app
 ```
 
-### 2. Running from Source
-Ensure Python 3.10+ and required dependencies are installed:
+### Running from Source
+Requires Python 3.10 or newer. Install dependencies and start the app:
 ```bash
 pip install -r app/requirements.txt
 PYTHONPATH=app/src python3 app/src/main.py
 ```
 
-### 3. Command Line Interface (CLI)
-IconReplace supports headless operation for automated workflows and scripting:
+### CLI Mode
+You can also run IconReplace headless from the terminal:
 
 ```bash
-# Apply custom icon patch to target application
+# Patch an application icon
 python3 app/src/main.py --patch --app "/Applications/Xcode.app" --icon "custom_icon.icns"
 
-# Enable background launchd update protection
+# Enable background launchd watcher
 python3 app/src/main.py --enable-watcher
 
-# Restore original stock icon from backup
+# Restore stock icon from backup
 python3 app/src/main.py --restore --app "/Applications/Xcode.app"
 
-# Display application status and backup registry
+# Print status and backup registry
 python3 app/src/main.py --status
 ```
 
----
+## Building the App
 
-## Building Standalone Application Bundle
-
-To package IconReplace into a standalone macOS `.app` bundle using PyInstaller:
+To compile a standalone macOS `.app` bundle with PyInstaller, run:
 
 ```bash
 chmod +x app/scripts/build_app.sh
 ./app/scripts/build_app.sh
 ```
-The compiled application bundle will be generated at `./IconReplace.app`.
+The output app bundle will appear at `./IconReplace.app`.
 
----
+## Testing
 
-## Testing & Verification
-
-Run the automated test suite to verify core icon manipulation, backup registry integrity, and launchd configuration generators:
+Run the unittest test suite to verify icon engine operations, backup registry checks, and LaunchAgent plist generation:
 
 ```bash
 python3 -m unittest discover -s app/tests -p "test_*.py"
 ```
 
----
-
 ## License
 
-Distributed under the MIT License. See [LICENSE](app/LICENSE) for complete terms.
+Distributed under the MIT License. See [LICENSE](app/LICENSE) for details.
