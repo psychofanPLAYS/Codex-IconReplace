@@ -18,3 +18,8 @@ venv/
 _backups/
 *.tmp
 .iconreplace_perm_check.tmp
+IconReplace.app
+build/
+dist/
+*.spec
+

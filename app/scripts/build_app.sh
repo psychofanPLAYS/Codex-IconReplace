@@ -2,8 +2,8 @@
 # ==============================================================================
 # Build Script for IconReplace.app
 #
-# Generates a standalone native macOS application bundle (IconReplace.app) in dist/
-# containing embedded Python source code, launcher binary, Info.plist, and AppIcon.icns.
+# Bundles IconReplace into a true standalone macOS application bundle using PyInstaller.
+# Embeds Python interpreter, CustomTkinter, PIL, dependencies, and assets.
 # ==============================================================================
 
 set -e
@@ -11,88 +11,51 @@ set -e
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 APP_DIR="$( cd "${SCRIPT_DIR}/.." >/dev/null 2>&1 && pwd )"
 PROJECT_ROOT="$( cd "${APP_DIR}/.." >/dev/null 2>&1 && pwd )"
-APP_BUNDLE="${PROJECT_ROOT}/IconReplace.app"
-CONTENTS_DIR="${APP_BUNDLE}/Contents"
-MACOS_DIR="${CONTENTS_DIR}/MacOS"
-RESOURCES_DIR="${CONTENTS_DIR}/Resources"
-SRC_DEST_DIR="${RESOURCES_DIR}/src"
+FINAL_APP_BUNDLE="${PROJECT_ROOT}/IconReplace.app"
+SPEC_FILE="${PROJECT_ROOT}/IconReplace.spec"
 
-echo "=== Building IconReplace.app ==="
+echo "=== Building Standalone IconReplace.app with PyInstaller ==="
 echo "Project Root: ${PROJECT_ROOT}"
-echo "App Source Dir: ${APP_DIR}"
-echo "App Bundle Target: ${APP_BUNDLE}"
+echo "Spec File:    ${SPEC_FILE}"
+echo "Target App:   ${FINAL_APP_BUNDLE}"
 
-# 1. Clean previous build directory
-rm -rf "${APP_BUNDLE}"
-mkdir -p "${MACOS_DIR}"
-mkdir -p "${RESOURCES_DIR}"
-mkdir -p "${SRC_DEST_DIR}"
-
-# 2. Copy python source files
-echo "Copying source modules..."
-cp -R "${APP_DIR}/src/"*.py "${SRC_DEST_DIR}/"
-
-# 3. Generate AppIcon.icns from system icon if needed
-SYS_ICON="/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/GenericApplicationIcon.icns"
-if [ -f "${SYS_ICON}" ]; then
-    cp "${SYS_ICON}" "${RESOURCES_DIR}/AppIcon.icns"
+# 1. Verify pyinstaller is available or install it
+if ! command -v pyinstaller &> /dev/null; then
+    echo "PyInstaller not found in PATH. Installing via pip..."
+    python3 -m pip install --quiet pyinstaller
 fi
 
-# 4. Create launcher executable script in Contents/MacOS/IconReplace
-cat << 'EOF' > "${MACOS_DIR}/IconReplace"
-#!/usr/bin/env bash
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
-RESOURCES_DIR="${SCRIPT_DIR}/../Resources"
-MAIN_SCRIPT="${RESOURCES_DIR}/src/main.py"
+# 2. Clean previous build artifacts and old app bundle
+echo "Cleaning previous build artifacts..."
+rm -rf "${PROJECT_ROOT}/build"
+rm -rf "${PROJECT_ROOT}/dist"
+rm -rf "${FINAL_APP_BUNDLE}"
 
-# Locate system python3 executable
-PYTHON_EXEC="$(which python3)"
-if [ -z "${PYTHON_EXEC}" ] || [ ! -x "${PYTHON_EXEC}" ]; then
-    PYTHON_EXEC="/usr/bin/python3"
+# 3. Run PyInstaller using spec file
+echo "Running PyInstaller build..."
+cd "${PROJECT_ROOT}"
+pyinstaller --noconfirm --clean "${SPEC_FILE}"
+
+# 4. Move generated bundle to project root if output in dist/
+if [ -d "${PROJECT_ROOT}/dist/IconReplace.app" ]; then
+    echo "Moving dist/IconReplace.app to project root..."
+    mv "${PROJECT_ROOT}/dist/IconReplace.app" "${FINAL_APP_BUNDLE}"
 fi
 
-exec "${PYTHON_EXEC}" "${MAIN_SCRIPT}" "$@"
-EOF
-
-chmod +x "${MACOS_DIR}/IconReplace"
-
-# 5. Create Info.plist bundle metadata
-cat << 'EOF' > "${CONTENTS_DIR}/Info.plist"
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleDevelopmentRegion</key>
-    <string>English</string>
-    <key>CFBundleExecutable</key>
-    <string>IconReplace</string>
-    <key>CFBundleIconFile</key>
-    <string>AppIcon.icns</string>
-    <key>CFBundleIdentifier</key>
-    <string>com.antigravity.iconreplace</string>
-    <key>CFBundleInfoDictionaryVersion</key>
-    <string>6.0</string>
-    <key>CFBundleName</key>
-    <string>IconReplace</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
-    <key>CFBundleVersion</key>
-    <string>1</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>11.0</string>
-    <key>NSHighResolutionCapable</key>
-    <true/>
-</dict>
-</plist>
-EOF
+# 5. Clean build directories
+rm -rf "${PROJECT_ROOT}/dist"
+rm -rf "${PROJECT_ROOT}/build"
 
 # 6. Sanitize extended attributes & sign bundle with ad-hoc signature
-echo "Signing application bundle..."
-xattr -cr "${APP_BUNDLE}" 2>/dev/null || true
-codesign --force --sign - "${APP_BUNDLE}" 2>/dev/null || true
+if [ -d "${FINAL_APP_BUNDLE}" ]; then
+    echo "Sanitizing attributes and signing application bundle..."
+    xattr -cr "${FINAL_APP_BUNDLE}" 2>/dev/null || true
+    codesign --force --deep --sign - "${FINAL_APP_BUNDLE}" 2>/dev/null || true
+else
+    echo "ERROR: IconReplace.app bundle was not found after build!"
+    exit 1
+fi
 
 echo "=== Build Complete ==="
-echo "Application bundle created successfully at:"
-echo "  ${APP_BUNDLE}"
+echo "Standalone application bundle successfully generated at:"
+echo "  ${FINAL_APP_BUNDLE}"

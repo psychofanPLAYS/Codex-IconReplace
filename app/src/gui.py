@@ -71,6 +71,106 @@ def check_write_permission(target_dir: Path = Path("/Applications")) -> bool:
         return False
 
 
+class HoverTooltip:
+    """Floating borderless semi-transparent hover tooltip window."""
+
+    def __init__(self, widget, text: str, delay: int = 250) -> None:
+        self.widget = widget
+        self.text = text
+        self.delay = delay
+        self.tooltip_window = None
+        self.timer_id = None
+
+        self.widget.bind("<Enter>", self.schedule_show)
+        self.widget.bind("<Leave>", self.hide)
+        self.widget.bind("<ButtonPress>", self.hide)
+
+    def schedule_show(self, event=None) -> None:
+        self.unschedule()
+        self.timer_id = self.widget.after(self.delay, self.show)
+
+    def unschedule(self) -> None:
+        if self.timer_id:
+            try:
+                self.widget.after_cancel(self.timer_id)
+            except Exception:
+                pass
+            self.timer_id = None
+
+    def show(self, event=None) -> None:
+        if self.tooltip_window or not self.text:
+            return
+
+        try:
+            x = self.widget.winfo_rootx() + 20
+            y = self.widget.winfo_rooty() + self.widget.winfo_height() + 5
+
+            if HAS_CUSTOMTKINTER:
+                tw = ctk.CTkToplevel(self.widget)
+                tw.wm_overrideredirect(True)
+                tw.wm_attributes("-topmost", True)
+                try:
+                    tw.wm_attributes("-alpha", 0.95)
+                except Exception:
+                    pass
+                tw.geometry(f"+{x}+{y}")
+
+                frame = ctk.CTkFrame(
+                    tw,
+                    fg_color="#1E2230",
+                    border_color="#3B82F6",
+                    border_width=1,
+                    corner_radius=6,
+                )
+                frame.pack(fill="both", expand=True, ipadx=8, ipady=6)
+
+                label = ctk.CTkLabel(
+                    frame,
+                    text=self.text,
+                    font=ctk.CTkFont(size=12),
+                    text_color="#F3F4F6",
+                    wraplength=280,
+                    justify="left",
+                )
+                label.pack()
+            else:
+                tw = ctk.Toplevel(self.widget)
+                tw.wm_overrideredirect(True)
+                tw.wm_attributes("-topmost", True)
+                try:
+                    tw.wm_attributes("-alpha", 0.95)
+                except Exception:
+                    pass
+                tw.geometry(f"+{x}+{y}")
+
+                label = ctk.Label(
+                    tw,
+                    text=self.text,
+                    justify="left",
+                    background="#1E2230",
+                    foreground="#F3F4F6",
+                    relief="solid",
+                    borderwidth=1,
+                    wraplength=280,
+                    padx=8,
+                    pady=6,
+                )
+                label.pack()
+
+            self.tooltip_window = tw
+        except Exception as err:
+            logger.warning("Failed to show tooltip: %s", err)
+
+    def hide(self, event=None) -> None:
+        self.unschedule()
+        if self.tooltip_window:
+            try:
+                self.tooltip_window.destroy()
+            except Exception:
+                pass
+            self.tooltip_window = None
+
+
 class IconReplaceGUI:
     """Main Application GUI Window for IconReplace."""
 
@@ -84,14 +184,18 @@ class IconReplaceGUI:
             self.root.configure(bg="#0F1117")
 
         self.root.title("IconReplace — macOS App Icon & Branding Customizer")
-        self.root.geometry("640x720")
-        self.root.minsize(580, 680)
+        self.root.geometry("960x720")
+        self.root.minsize(860, 620)
 
         self.backup_registry = BackupRegistry()
         self.watcher = watcher or AppUpdateWatcher(backup_registry=self.backup_registry)
         self.launch_agent_mgr = LaunchAgentManager()
 
         self.selected_icon_path: Optional[Path] = None
+        self.views = {}
+        self.nav_buttons = {}
+        self.active_view = "overview"
+
         self._init_ui()
 
         # Connect watcher callback
@@ -113,73 +217,198 @@ class IconReplaceGUI:
             pass
 
     def _init_ui(self) -> None:
-        """Constructs the dark mode liquid-glass UI layout."""
+        """Constructs the 2-column liquid-glass UI layout with left sidebar navigation."""
         if HAS_CUSTOMTKINTER:
-            self.main_container = ctk.CTkScrollableFrame(
+            # 2-Column Grid Setup: Column 0 = Sidebar (fixed), Column 1 = Content (expandable)
+            self.root.grid_columnconfigure(0, weight=0)
+            self.root.grid_columnconfigure(1, weight=1)
+            self.root.grid_rowconfigure(0, weight=1)
+
+            # Left Navigation Sidebar Frame
+            self.sidebar_frame = ctk.CTkFrame(
+                self.root,
+                width=220,
+                corner_radius=0,
+                fg_color="#12151E",
+                border_color="#1F2432",
+                border_width=1,
+            )
+            self.sidebar_frame.grid(row=0, column=0, sticky="nsew")
+            self.sidebar_frame.grid_rowconfigure(5, weight=1)  # Spacer pushes footer to bottom
+
+            # Right Main Content Area Container
+            self.main_container = ctk.CTkFrame(
                 self.root,
                 fg_color="#0F1117",
                 corner_radius=0,
             )
-            self.main_container.pack(fill="both", expand=True, padx=20, pady=20)
+            self.main_container.grid(row=0, column=1, sticky="nsew")
+
+            # 1. Build Left Sidebar Content
+            self._build_sidebar()
+
+            # 2. Build Right View Frames (standard CTkFrame without scrollbars)
+            self.views["overview"] = ctk.CTkFrame(self.main_container, fg_color="#0F1117", corner_radius=0)
+            self.views["settings"] = ctk.CTkFrame(self.main_container, fg_color="#0F1117", corner_radius=0)
+            self.views["permissions"] = ctk.CTkFrame(self.main_container, fg_color="#0F1117", corner_radius=0)
+
+            # Populate Views
+            self._build_overview_view(self.views["overview"])
+            self._build_settings_view(self.views["settings"])
+            self._build_permissions_view(self.views["permissions"])
+
+            # Default view
+            self._show_view("overview")
         else:
             self.main_container = ctk.Frame(self.root, bg="#0F1117")
             self.main_container.pack(fill="both", expand=True, padx=20, pady=20)
+            self._build_status_card(self.main_container)
+            self._build_icon_drop_zone(self.main_container)
+            self._build_action_buttons(self.main_container)
+            self._build_settings_panel(self.main_container)
+            self._build_permission_card(self.main_container)
 
-        # 1. Header Title Banner
-        self._build_header()
+    def _build_sidebar(self) -> None:
+        """Constructs the left navigation sidebar with logo branding and view selector buttons."""
+        if not HAS_CUSTOMTKINTER:
+            return
 
-        # 2. Codex App Status Card
-        self._build_status_card()
+        # Sidebar Title & Branding Header
+        header_frame = ctk.CTkFrame(self.sidebar_frame, fg_color="transparent")
+        header_frame.pack(fill="x", padx=16, pady=(24, 20))
 
-        # 3. Icon Selection & Drag-and-Drop Zone
-        self._build_icon_drop_zone()
+        lbl_logo = ctk.CTkLabel(
+            header_frame,
+            text="🎨 IconReplace",
+            font=ctk.CTkFont(size=20, weight="bold"),
+            text_color="#F3F4F6",
+        )
+        lbl_logo.pack(anchor="w")
 
-        # 4. Action Buttons (Apply Patch / Restore Backup)
-        self._build_action_buttons()
+        lbl_version = ctk.CTkLabel(
+            header_frame,
+            text="v2.0 • Liquid Glass",
+            font=ctk.CTkFont(size=11),
+            text_color="#6B7280",
+        )
+        lbl_version.pack(anchor="w", pady=(2, 0))
 
-        # 5. Settings Panel (Toggles)
-        self._build_settings_panel()
+        # Navigation Divider
+        divider = ctk.CTkFrame(self.sidebar_frame, height=1, fg_color="#1F2432")
+        divider.pack(fill="x", padx=16, pady=(0, 16))
 
-        # 6. Permission & System Helper Card
-        self._build_permission_card()
+        # Navigation Buttons
+        nav_items = [
+            ("overview", "📊  Overview"),
+            ("settings", "⚙️  Settings"),
+            ("permissions", "🔒  Permissions"),
+        ]
 
-    def _build_header(self) -> None:
-        """Header title and subtitle."""
-        header_frame = ctk.CTkFrame(self.main_container, fg_color="transparent") if HAS_CUSTOMTKINTER else ctk.Frame(self.main_container, bg="#0F1117")
-        header_frame.pack(fill="x", pady=(0, 15))
+        for view_key, label_text in nav_items:
+            btn = ctk.CTkButton(
+                self.sidebar_frame,
+                text=label_text,
+                anchor="w",
+                height=38,
+                corner_radius=8,
+                font=ctk.CTkFont(size=13, weight="normal"),
+                fg_color="transparent",
+                hover_color="#1E2230",
+                text_color="#9CA3AF",
+                command=lambda k=view_key: self._show_view(k),
+            )
+            btn.pack(fill="x", padx=14, pady=3)
+            self.nav_buttons[view_key] = btn
+
+        # Bottom Footer / Status Indicator inside Sidebar
+        footer_frame = ctk.CTkFrame(self.sidebar_frame, fg_color="#181B24", corner_radius=8, border_color="#2E344A", border_width=1)
+        footer_frame.pack(side="bottom", fill="x", padx=14, pady=16)
+
+        lbl_engine_status = ctk.CTkLabel(
+            footer_frame,
+            text="🟢 Engine Active",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color="#10B981",
+        )
+        lbl_engine_status.pack(padx=10, pady=8)
+
+    def _show_view(self, view_name: str) -> None:
+        """Swaps the active view frame in the main container and updates navigation button state."""
+        self.active_view = view_name
+        for name, frame in self.views.items():
+            frame.pack_forget()
+
+        if view_name in self.views:
+            self.views[view_name].pack(fill="both", expand=True, padx=24, pady=20)
 
         if HAS_CUSTOMTKINTER:
-            title_lbl = ctk.CTkLabel(
+            for name, btn in self.nav_buttons.items():
+                if name == view_name:
+                    btn.configure(
+                        fg_color="#6366F1",
+                        hover_color="#4F46E5",
+                        text_color="#FFFFFF",
+                        font=ctk.CTkFont(size=13, weight="bold"),
+                    )
+                else:
+                    btn.configure(
+                        fg_color="transparent",
+                        hover_color="#1E2230",
+                        text_color="#9CA3AF",
+                        font=ctk.CTkFont(size=13, weight="normal"),
+                    )
+
+    def _build_view_header(self, parent, title: str, subtitle: str) -> None:
+        """Renders section header banner at top of view frame."""
+        if HAS_CUSTOMTKINTER:
+            header_frame = ctk.CTkFrame(parent, fg_color="transparent")
+            header_frame.pack(fill="x", pady=(0, 20))
+
+            lbl_title = ctk.CTkLabel(
                 header_frame,
-                text="🎨 IconReplace",
-                font=ctk.CTkFont(size=26, weight="bold"),
+                text=title,
+                font=ctk.CTkFont(size=22, weight="bold"),
                 text_color="#F3F4F6",
             )
-            title_lbl.pack(anchor="w")
+            lbl_title.pack(anchor="w")
 
-            subtitle_lbl = ctk.CTkLabel(
+            lbl_sub = ctk.CTkLabel(
                 header_frame,
-                text="Ultra-Modern Dark Mode Icon & App Branding Customizer",
-                font=ctk.CTkFont(size=13),
+                text=subtitle,
+                font=ctk.CTkFont(size=12),
                 text_color="#9CA3AF",
             )
-            subtitle_lbl.pack(anchor="w", pady=(2, 0))
-        else:
-            title_lbl = ctk.Label(header_frame, text="🎨 IconReplace", font=("Helvetica", 22, "bold"), fg="#F3F4F6", bg="#0F1117")
-            title_lbl.pack(anchor="w")
+            lbl_sub.pack(anchor="w", pady=(2, 0))
 
-    def _build_status_card(self) -> None:
+    def _build_overview_view(self, parent) -> None:
+        """Constructs the Overview view frame."""
+        self._build_view_header(parent, "📊 Application Overview", "Manage target application status, custom icon selection, and branding patches.")
+        self._build_status_card(parent)
+        self._build_icon_drop_zone(parent)
+        self._build_action_buttons(parent)
+
+    def _build_settings_view(self, parent) -> None:
+        """Constructs the Settings view frame."""
+        self._build_view_header(parent, "⚙️ Preferences & Automation", "Configure auto-repair background behavior, startup LaunchAgent, and desktop alerts.")
+        self._build_settings_panel(parent)
+
+    def _build_permissions_view(self, parent) -> None:
+        """Constructs the Permissions view frame."""
+        self._build_view_header(parent, "🔒 System Permissions", "Verify macOS privacy entitlements and system application directory write access.")
+        self._build_permission_card(parent)
+
+    def _build_status_card(self, parent) -> None:
         """Status overview card for target application."""
         if HAS_CUSTOMTKINTER:
             self.status_card = ctk.CTkFrame(
-                self.main_container,
+                parent,
                 fg_color="#181B24",
                 border_color="#2E344A",
                 border_width=1,
                 corner_radius=12,
             )
         else:
-            self.status_card = ctk.Frame(self.main_container, bg="#181B24", bd=1, relief="solid")
+            self.status_card = ctk.Frame(parent, bg="#181B24", bd=1, relief="solid")
 
         self.status_card.pack(fill="x", pady=(0, 15), ipadx=15, ipady=12)
 
@@ -223,18 +452,18 @@ class IconReplaceGUI:
             self.status_badge = ctk.Label(self.status_card, text="Checking...", fg="#F3F4F6", bg="#181B24")
             self.status_badge.pack(padx=10, pady=10)
 
-    def _build_icon_drop_zone(self) -> None:
+    def _build_icon_drop_zone(self, parent) -> None:
         """Drag-and-Drop / File selection card with live visual icon preview."""
         if HAS_CUSTOMTKINTER:
             self.drop_frame = ctk.CTkFrame(
-                self.main_container,
+                parent,
                 fg_color="#181B24",
                 border_color="#2E344A",
                 border_width=1,
                 corner_radius=12,
             )
         else:
-            self.drop_frame = ctk.Frame(self.main_container, bg="#181B24", bd=1, relief="solid")
+            self.drop_frame = ctk.Frame(parent, bg="#181B24", bd=1, relief="solid")
 
         self.drop_frame.pack(fill="x", pady=(0, 15), ipadx=15, ipady=15)
 
@@ -283,14 +512,18 @@ class IconReplaceGUI:
             btn_browse.pack(pady=(0, 10))
             self._update_icon_preview()
 
-    def _build_action_buttons(self) -> None:
+    def _build_action_buttons(self, parent) -> None:
         """Primary action buttons for applying patch and restoring backups."""
         if HAS_CUSTOMTKINTER:
-            actions_frame = ctk.CTkFrame(self.main_container, fg_color="transparent")
+            actions_frame = ctk.CTkFrame(parent, fg_color="transparent")
             actions_frame.pack(fill="x", pady=(0, 15))
 
+            # Apply Button Row + Tooltip
+            row_apply = ctk.CTkFrame(actions_frame, fg_color="transparent")
+            row_apply.pack(fill="x", pady=(0, 8))
+
             self.btn_apply = ctk.CTkButton(
-                actions_frame,
+                row_apply,
                 text="✨ Apply Dark Mode Icon",
                 font=ctk.CTkFont(size=14, weight="bold"),
                 height=42,
@@ -298,10 +531,26 @@ class IconReplaceGUI:
                 hover_color="#4F46E5",
                 command=self.apply_dark_icon,
             )
-            self.btn_apply.pack(fill="x", pady=(0, 8))
+            self.btn_apply.pack(side="left", fill="x", expand=True)
+
+            info_apply = ctk.CTkLabel(
+                row_apply,
+                text=" ( i ) ",
+                font=ctk.CTkFont(size=12, weight="bold"),
+                text_color="#60A5FA",
+                cursor="hand2",
+            )
+            info_apply.pack(side="left", padx=(8, 0))
+            t_apply = "Replaces the application's icon and restarts the dock. A backup is automatically created."
+            HoverTooltip(info_apply, t_apply)
+            HoverTooltip(self.btn_apply, t_apply)
+
+            # Restore Button Row + Tooltip
+            row_restore = ctk.CTkFrame(actions_frame, fg_color="transparent")
+            row_restore.pack(fill="x")
 
             self.btn_restore = ctk.CTkButton(
-                actions_frame,
+                row_restore,
                 text="↺ Restore Original Backup (1-Click Undo)",
                 font=ctk.CTkFont(size=13),
                 height=36,
@@ -310,13 +559,25 @@ class IconReplaceGUI:
                 text_color="#F3F4F6",
                 command=self.restore_backup,
             )
-            self.btn_restore.pack(fill="x")
+            self.btn_restore.pack(side="left", fill="x", expand=True)
 
-    def _build_settings_panel(self) -> None:
+            info_restore = ctk.CTkLabel(
+                row_restore,
+                text=" ( i ) ",
+                font=ctk.CTkFont(size=12, weight="bold"),
+                text_color="#60A5FA",
+                cursor="hand2",
+            )
+            info_restore.pack(side="left", padx=(8, 0))
+            t_restore = "Reverts the icon to the original system default."
+            HoverTooltip(info_restore, t_restore)
+            HoverTooltip(self.btn_restore, t_restore)
+
+    def _build_settings_panel(self, parent) -> None:
         """Settings switches for auto-repair, background startup, and notifications."""
         if HAS_CUSTOMTKINTER:
             self.settings_card = ctk.CTkFrame(
-                self.main_container,
+                parent,
                 fg_color="#181B24",
                 border_color="#2E344A",
                 border_width=1,
@@ -332,41 +593,89 @@ class IconReplaceGUI:
             )
             lbl_title.pack(anchor="w", padx=15, pady=(10, 10))
 
+            # Auto-Repair Row
+            row_auto = ctk.CTkFrame(self.settings_card, fg_color="transparent")
+            row_auto.pack(anchor="w", padx=15, pady=(0, 8), fill="x")
+
             self.sw_auto_repair = ctk.CTkSwitch(
-                self.settings_card,
+                row_auto,
                 text="Auto-Repair when Codex updates (ChatGPT name detector)",
                 font=ctk.CTkFont(size=13),
                 command=self._on_toggle_auto_repair,
             )
             if self.launch_agent_mgr.is_agent_installed() or self.watcher.auto_repair_enabled:
                 self.sw_auto_repair.select()
-            self.sw_auto_repair.pack(anchor="w", padx=15, pady=(0, 8))
+            self.sw_auto_repair.pack(side="left")
+
+            info_auto = ctk.CTkLabel(
+                row_auto,
+                text=" ( i ) ",
+                font=ctk.CTkFont(size=12, weight="bold"),
+                text_color="#60A5FA",
+                cursor="hand2",
+            )
+            info_auto.pack(side="left", padx=(8, 0))
+            t_auto = "Runs silently in the background to automatically re-apply your custom icon if an app update overwrites it."
+            HoverTooltip(info_auto, t_auto)
+            HoverTooltip(self.sw_auto_repair, t_auto)
+
+            # Startup Row
+            row_startup = ctk.CTkFrame(self.settings_card, fg_color="transparent")
+            row_startup.pack(anchor="w", padx=15, pady=(0, 8), fill="x")
 
             self.sw_startup = ctk.CTkSwitch(
-                self.settings_card,
+                row_startup,
                 text="Launch in background on system startup",
                 font=ctk.CTkFont(size=13),
                 command=self._on_toggle_startup,
             )
-            if is_launch_agent_enabled():
+            if self.launch_agent_mgr.is_agent_installed():
                 self.sw_startup.select()
-            self.sw_startup.pack(anchor="w", padx=15, pady=(0, 8))
+            self.sw_startup.pack(side="left")
+
+            info_startup = ctk.CTkLabel(
+                row_startup,
+                text=" ( i ) ",
+                font=ctk.CTkFont(size=12, weight="bold"),
+                text_color="#60A5FA",
+                cursor="hand2",
+            )
+            info_startup.pack(side="left", padx=(8, 0))
+            t_startup = "Ensures the Auto-Repair agent starts every time you turn on your Mac."
+            HoverTooltip(info_startup, t_startup)
+            HoverTooltip(self.sw_startup, t_startup)
+
+            # Notifications Row
+            row_notify = ctk.CTkFrame(self.settings_card, fg_color="transparent")
+            row_notify.pack(anchor="w", padx=15, pady=(0, 10), fill="x")
 
             self.sw_notify = ctk.CTkSwitch(
-                self.settings_card,
+                row_notify,
                 text="macOS Desktop Banner Notifications",
                 font=ctk.CTkFont(size=13),
                 command=self._on_toggle_notifications,
             )
             if self.watcher.notifications_enabled:
                 self.sw_notify.select()
-            self.sw_notify.pack(anchor="w", padx=15, pady=(0, 10))
+            self.sw_notify.pack(side="left")
 
-    def _build_permission_card(self) -> None:
+            info_notify = ctk.CTkLabel(
+                row_notify,
+                text=" ( i ) ",
+                font=ctk.CTkFont(size=12, weight="bold"),
+                text_color="#60A5FA",
+                cursor="hand2",
+            )
+            info_notify.pack(side="left", padx=(8, 0))
+            t_notify = "Displays macOS system banner notifications when icon changes or auto-repairs take place."
+            HoverTooltip(info_notify, t_notify)
+            HoverTooltip(self.sw_notify, t_notify)
+
+    def _build_permission_card(self, parent) -> None:
         """Permission status card and open System Settings helper."""
         if HAS_CUSTOMTKINTER:
             perm_card = ctk.CTkFrame(
-                self.main_container,
+                parent,
                 fg_color="#181B24",
                 border_color="#2E344A",
                 border_width=1,
@@ -378,13 +687,27 @@ class IconReplaceGUI:
             status_text = "🟢 App Management / /Applications Write Permission OK" if has_write else "⚠️ Restricted /Applications Write Access"
             status_color = "#10B981" if has_write else "#F59E0B"
 
+            row_perm_title = ctk.CTkFrame(perm_card, fg_color="transparent")
+            row_perm_title.pack(anchor="w", padx=15, pady=(10, 5), fill="x")
+
             lbl_title = ctk.CTkLabel(
-                perm_card,
+                row_perm_title,
                 text="SYSTEM PERMISSIONS",
                 font=ctk.CTkFont(size=11, weight="bold"),
                 text_color="#6B7280",
             )
-            lbl_title.pack(anchor="w", padx=15, pady=(10, 5))
+            lbl_title.pack(side="left")
+
+            info_perm = ctk.CTkLabel(
+                row_perm_title,
+                text=" ( i ) ",
+                font=ctk.CTkFont(size=12, weight="bold"),
+                text_color="#60A5FA",
+                cursor="hand2",
+            )
+            info_perm.pack(side="left", padx=(8, 0))
+            t_perm = "macOS requires explicit permission to modify files inside the secure /Applications folder."
+            HoverTooltip(info_perm, t_perm)
 
             lbl_status = ctk.CTkLabel(
                 perm_card,
@@ -405,6 +728,7 @@ class IconReplaceGUI:
                 command=open_app_management_settings,
             )
             btn_perm.pack(anchor="w", padx=15, pady=(0, 10))
+            HoverTooltip(btn_perm, t_perm)
 
     def _update_icon_preview(self) -> None:
         """Loads and renders the current replacement icon image in the GUI preview container."""
