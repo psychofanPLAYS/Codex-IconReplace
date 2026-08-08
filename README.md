@@ -8,7 +8,9 @@
 
 IconReplace changes macOS application icons and keeps them modified. 
 
-When macOS apps auto-update, system updaters routinely overwrite custom `.icns` files inside `/Applications`. IconReplace prevents icon reversion by setting up lightweight `launchd` kernel file watchers (`WatchPaths`). When an app update overwrites your icon, the background LaunchAgent catches the file change and re-applies your custom icon automatically. It uses zero background CPU or RAM while idling.
+I originally wrote this to solve the frustrating `ChatGPT -> Codex -> ChatGPT -> Codex` app renaming cycle. Every time the application updated and changed its name, macOS threw away my custom `.icns` file and reset the icon in the Dock. 
+
+System updaters routinely overwrite custom `.icns` files inside `/Applications` during auto-updates. IconReplace prevents this reversion. It sets up lightweight `launchd` kernel file watchers (`WatchPaths`) pointing at the app bundles you care about. When an update overwrites your icon, the background LaunchAgent catches the file change and re-applies your custom icon instantly. It uses zero persistent CPU or RAM while idling.
 
 ## Features
 
