@@ -2,7 +2,8 @@
 
 > Native macOS application icon management utility with automated update persistence and backup verification.
 
-![IconReplace UI](docs/assets/screenshot.png)
+![Main UI](docs/assets/screenshot_main.png)
+![Settings UI](docs/assets/screenshot_settings.png)
 
 ## What it does
 

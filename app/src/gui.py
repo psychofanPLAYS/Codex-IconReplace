@@ -302,7 +302,7 @@ class IconReplaceGUI:
 
         lbl_version = ctk.CTkLabel(
             header_frame,
-            text="v0.1.015 • Liquid Glass",
+            text="v0.1.015 • MacOS Edition.",
             font=ctk.CTkFont(size=11),
             text_color="#6B7280",
         )
