@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# IconReplace local backups & build output
+_backups/
+*.tmp
+.iconreplace_perm_check.tmp

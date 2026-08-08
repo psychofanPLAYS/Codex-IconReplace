@@ -1,0 +1,21 @@
+# macOS system files
+.DS_Store
+.localized
+.trash/
+
+# Python cache & artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# Local backups
+.iconreplace/
+_backups/
+
+# Build dist output
+dist/IconReplace.app
