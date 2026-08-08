@@ -69,6 +69,7 @@ def convert_image_to_icns(input_path: Path, output_icns_path: Path) -> bool:
             out_png = iconset_dir / filename
             sips_cmd = [
                 "sips",
+                "-s", "format", "png",
                 "-z", str(height), str(width),
                 "--padToHeightWidth", str(height), str(width),
                 str(input_path),
@@ -249,6 +250,24 @@ def patch_app_icon(
                 active_app_path.rename(new_app_path)
                 active_app_path = new_app_path
                 logger.info("Renamed app bundle to %s", active_app_path)
+
+    # 4.5 Copy over dark mode bundle assets to Codex Contents folder
+    assets_dir = Path(__file__).resolve().parent.parent.parent / "_backups" / "assets"
+    if assets_dir.exists() and assets_dir.is_dir():
+        target_contents = active_app_path / "Contents"
+        target_resources = target_contents / "Resources"
+        
+        for asset_file in assets_dir.glob("*"):
+            if asset_file.is_file() and not asset_file.name.startswith("."):
+                try:
+                    # Move into Contents folder
+                    shutil.copy(asset_file, target_contents / asset_file.name)
+                    # And also move into Resources just in case
+                    if target_resources.exists():
+                        shutil.copy(asset_file, target_resources / asset_file.name)
+                    logger.info("Copied dark mode bundle asset %s to Codex app", asset_file.name)
+                except Exception as e:
+                    logger.warning("Failed to copy asset %s: %s", asset_file.name, e)
 
     # 5. Reset extended attributes and re-sign bundle cleanly
     try:

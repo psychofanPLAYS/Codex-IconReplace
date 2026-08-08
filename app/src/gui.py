@@ -302,7 +302,7 @@ class IconReplaceGUI:
 
         lbl_version = ctk.CTkLabel(
             header_frame,
-            text="v0.1.015 • MacOS Edition.",
+            text="v0.1.018 • MacOS Edition.",
             font=ctk.CTkFont(size=11),
             text_color="#6B7280",
         )
@@ -766,7 +766,9 @@ class IconReplaceGUI:
         icon_file = self.selected_icon_path or self.watcher.replacement_icon_path
         if icon_file is None or not icon_file.exists():
             asset_dir = Path(__file__).resolve().parent.parent / "assets"
-            asset_png = asset_dir / "icon-codex-dark-color.png"
+            asset_png = asset_dir / "icon-layer-peel.png"
+            if not asset_png.exists():
+                asset_png = asset_dir / "icon-prism-morph.png"
             if asset_png.exists():
                 icon_file = asset_png
             else:
