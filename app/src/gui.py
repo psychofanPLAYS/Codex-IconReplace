@@ -196,6 +196,21 @@ class IconReplaceGUI:
         self.nav_buttons = {}
         self.active_view = "overview"
 
+        info_icon_file = Path("app/assets/icons/info.png")
+        if not info_icon_file.exists():
+            info_icon_file = Path(__file__).resolve().parent.parent / "assets" / "icons" / "info.png"
+        if not info_icon_file.exists() and hasattr(sys, "_MEIPASS"):
+            info_icon_file = Path(sys._MEIPASS) / "assets" / "icons" / "info.png"
+
+        if HAS_CUSTOMTKINTER and HAS_PIL and info_icon_file.exists():
+            self.info_icon_image = ctk.CTkImage(
+                light_image=Image.open(info_icon_file),
+                dark_image=Image.open(info_icon_file),
+                size=(16, 16),
+            )
+        else:
+            self.info_icon_image = None
+
         self._init_ui()
 
         # Connect watcher callback
@@ -535,9 +550,8 @@ class IconReplaceGUI:
 
             info_apply = ctk.CTkLabel(
                 row_apply,
-                text=" ( i ) ",
-                font=ctk.CTkFont(size=12, weight="bold"),
-                text_color="#60A5FA",
+                text="",
+                image=self.info_icon_image,
                 cursor="hand2",
             )
             info_apply.pack(side="left", padx=(8, 0))
@@ -563,9 +577,8 @@ class IconReplaceGUI:
 
             info_restore = ctk.CTkLabel(
                 row_restore,
-                text=" ( i ) ",
-                font=ctk.CTkFont(size=12, weight="bold"),
-                text_color="#60A5FA",
+                text="",
+                image=self.info_icon_image,
                 cursor="hand2",
             )
             info_restore.pack(side="left", padx=(8, 0))
@@ -609,9 +622,8 @@ class IconReplaceGUI:
 
             info_auto = ctk.CTkLabel(
                 row_auto,
-                text=" ( i ) ",
-                font=ctk.CTkFont(size=12, weight="bold"),
-                text_color="#60A5FA",
+                text="",
+                image=self.info_icon_image,
                 cursor="hand2",
             )
             info_auto.pack(side="left", padx=(8, 0))
@@ -635,9 +647,8 @@ class IconReplaceGUI:
 
             info_startup = ctk.CTkLabel(
                 row_startup,
-                text=" ( i ) ",
-                font=ctk.CTkFont(size=12, weight="bold"),
-                text_color="#60A5FA",
+                text="",
+                image=self.info_icon_image,
                 cursor="hand2",
             )
             info_startup.pack(side="left", padx=(8, 0))
@@ -661,9 +672,8 @@ class IconReplaceGUI:
 
             info_notify = ctk.CTkLabel(
                 row_notify,
-                text=" ( i ) ",
-                font=ctk.CTkFont(size=12, weight="bold"),
-                text_color="#60A5FA",
+                text="",
+                image=self.info_icon_image,
                 cursor="hand2",
             )
             info_notify.pack(side="left", padx=(8, 0))
@@ -700,9 +710,8 @@ class IconReplaceGUI:
 
             info_perm = ctk.CTkLabel(
                 row_perm_title,
-                text=" ( i ) ",
-                font=ctk.CTkFont(size=12, weight="bold"),
-                text_color="#60A5FA",
+                text="",
+                image=self.info_icon_image,
                 cursor="hand2",
             )
             info_perm.pack(side="left", padx=(8, 0))
