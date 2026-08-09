@@ -72,10 +72,10 @@ def run_auto_repair_delayed() -> None:
         target_app = user_chatgpt_app
 
     if target_app:
-        sys_icon = Path("/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/GenericApplicationIcon.icns")
+        default_profile = Path(__file__).resolve().parent.parent / "assets" / "destination-assets" / "00"
         patch_app_icon(
             target_app_path=target_app,
-            replacement_icon_path=sys_icon,
+            profile_dir=default_profile,
             rename_to_codex=True,
         )
         send_macos_notification(
@@ -100,7 +100,7 @@ def run_background_daemon() -> None:
         watcher.stop()
 
 
-def run_cli_patch(icon_path: str) -> None:
+def run_cli_patch(profile_path: str) -> None:
     """Executes a single non-interactive CLI patch command."""
     logging.info("Executing CLI patch operation...")
     watcher = AppUpdateWatcher(auto_repair_enabled=False)
@@ -110,14 +110,14 @@ def run_cli_patch(icon_path: str) -> None:
         logging.error("Neither Codex.app nor ChatGPT.app was found in /Applications.")
         sys.exit(1)
 
-    target_icon = Path(icon_path).resolve() if icon_path else None
-    if not target_icon or not target_icon.exists():
-        target_icon = Path("/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/GenericApplicationIcon.icns")
+    target_profile = Path(profile_path).resolve() if profile_path else None
+    if not target_profile or not target_profile.exists():
+        target_profile = Path(__file__).resolve().parent.parent / "assets" / "destination-assets" / "00"
 
     registry = BackupRegistry()
     success = patch_app_icon(
         target_app_path=app_path,
-        replacement_icon_path=target_icon,
+        profile_dir=target_profile,
         rename_to_codex=True,
         backup_registry=registry,
     )
@@ -169,10 +169,10 @@ def main() -> None:
         help="Execute non-interactive backup restore",
     )
     parser.add_argument(
-        "-i", "--icon",
+        "-i", "--profile",
         type=str,
         default="",
-        help="Path to replacement icon file for CLI patch operation",
+        help="Path to replacement profile directory for CLI patch operation",
     )
     parser.add_argument(
         "-v", "--verbose",
@@ -194,7 +194,7 @@ def main() -> None:
     elif args.background:
         run_background_daemon()
     elif args.patch:
-        run_cli_patch(args.icon)
+        run_cli_patch(args.profile)
     elif args.restore:
         run_cli_restore()
     else:

@@ -143,7 +143,7 @@ class AppUpdateWatcher:
     def __init__(
         self,
         watch_dirs: Optional[List[Path]] = None,
-        replacement_icon_path: Optional[Path] = None,
+        profile_dir: Optional[Path] = None,
         auto_repair_enabled: bool = True,
         notifications_enabled: bool = True,
         poll_interval: float = 3.0,
@@ -155,7 +155,7 @@ class AppUpdateWatcher:
 
         Args:
             watch_dirs: Custom directories to monitor. Defaults to [/Applications, ~/Applications].
-            replacement_icon_path: Path to custom .png / .icns file for auto-repair.
+            profile_dir: Path to custom profile directory for auto-repair.
             auto_repair_enabled: If True, automatically patches app when ChatGPT.app is detected.
             notifications_enabled: If True, dispatches macOS banner notifications on repair.
             poll_interval: Kept for backwards-compatible API signature.
@@ -170,11 +170,11 @@ class AppUpdateWatcher:
         else:
             self.watch_dirs = [Path(d).expanduser().resolve() for d in watch_dirs]
 
-        self.replacement_icon_path = (
-            Path(replacement_icon_path).resolve()
-            if replacement_icon_path
-            else None
-        )
+        if profile_dir is None:
+            self.profile_dir = Path(__file__).resolve().parent.parent / "assets" / "destination-assets" / "00"
+        else:
+            self.profile_dir = Path(profile_dir).resolve()
+            
         self.auto_repair_enabled = auto_repair_enabled
         self.notifications_enabled = notifications_enabled
         self.poll_interval = poll_interval
@@ -308,15 +308,14 @@ class AppUpdateWatcher:
         Returns:
             True on successful repair, False otherwise.
         """
-        # Use provided replacement icon or system icon default fallback
-        icon_to_use = self.replacement_icon_path
-        if icon_to_use is None or not icon_to_use.exists():
-            # Fallback to system application icon or asset
-            icon_to_use = Path("/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/GenericApplicationIcon.icns")
+        # Use provided profile_dir or default to 00
+        profile_to_use = self.profile_dir
+        if profile_to_use is None or not profile_to_use.exists():
+            profile_to_use = Path(__file__).resolve().parent.parent / "assets" / "destination-assets" / "00"
 
         success = patch_app_icon(
             target_app_path=target_app_path,
-            replacement_icon_path=icon_to_use,
+            profile_dir=profile_to_use,
             rename_to_codex=True,
             backup_registry=self.backup_registry,
         )

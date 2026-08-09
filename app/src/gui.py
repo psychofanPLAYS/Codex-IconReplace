@@ -14,6 +14,7 @@ Auditing & Safety Notes:
 import logging
 import os
 import plistlib
+import shutil
 import subprocess
 import sys
 import threading
@@ -31,7 +32,7 @@ except ImportError:
 
 from app_watcher import AppUpdateWatcher, send_macos_notification
 from backup_registry import BackupRegistry
-from icon_engine import patch_app_icon
+from icon_engine import patch_app_icon, convert_image_to_icns
 from launchd_manager import LaunchAgentManager
 
 logger = logging.getLogger("IconReplace.GUI")
@@ -191,7 +192,7 @@ class IconReplaceGUI:
         self.watcher = watcher or AppUpdateWatcher(backup_registry=self.backup_registry)
         self.launch_agent_mgr = LaunchAgentManager()
 
-        self.selected_icon_path: Optional[Path] = None
+        self.selected_profile_dir: Optional[Path] = None
         self.views = {}
         self.nav_buttons = {}
         self.active_view = "overview"
@@ -302,7 +303,7 @@ class IconReplaceGUI:
 
         lbl_version = ctk.CTkLabel(
             header_frame,
-            text="v0.1.018 • MacOS Edition.",
+            text="v0.1.019 • MacOS Edition.",
             font=ctk.CTkFont(size=11),
             text_color="#6B7280",
         )
@@ -763,7 +764,16 @@ class IconReplaceGUI:
         if not HAS_CUSTOMTKINTER or not hasattr(self, "preview_label"):
             return
 
-        icon_file = self.selected_icon_path or self.watcher.replacement_icon_path
+        profile_dir = self.selected_profile_dir
+        if not profile_dir and hasattr(self, "watcher") and hasattr(self.watcher, "profile_dir"):
+            profile_dir = self.watcher.profile_dir
+            
+        icon_file = None
+        if profile_dir and profile_dir.exists():
+            icon_file = profile_dir / "icon-codex-light.png"
+            if not icon_file.exists():
+                icon_file = profile_dir / "app.icns"
+                
         if icon_file is None or not icon_file.exists():
             asset_dir = Path(__file__).resolve().parent.parent / "assets"
             asset_png = asset_dir / "icon-layer-peel.png"
@@ -786,6 +796,61 @@ class IconReplaceGUI:
         except Exception as err:
             logger.warning("Failed to render icon preview: %s", err)
             self.preview_label.configure(text="[ Image Icon ]", text_color="#6366F1")
+
+    def _generate_user_profile(self, chosen_path: Path) -> Path:
+        """Creates a new numbered profile folder and generates standard named assets from the uploaded icon."""
+        dest_assets_dir = Path(__file__).resolve().parent.parent / "assets" / "destination-assets"
+        dest_assets_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Find next available profile number
+        existing_profiles = [d for d in dest_assets_dir.glob("[0-9][0-9]") if d.is_dir()]
+        next_num = 1
+        if existing_profiles:
+            nums = [int(d.name) for d in existing_profiles if d.name.isdigit()]
+            if nums:
+                next_num = max(nums) + 1
+                
+        profile_name = f"{next_num:02d}"
+        profile_dir = dest_assets_dir / profile_name
+        profile_dir.mkdir(parents=True, exist_ok=True)
+        
+        try:
+            # 1. Convert to app.icns
+            app_icns = profile_dir / "app.icns"
+            if chosen_path.suffix.lower() == ".icns":
+                shutil.copy(chosen_path, app_icns)
+            else:
+                success = convert_image_to_icns(chosen_path, app_icns)
+                if not success:
+                    logger.warning("Failed to generate ICNS for profile %s", profile_name)
+                    # Create empty file so the app doesn't crash if it looks for it
+                    app_icns.touch()
+
+            # Copy icns to other required names
+            if app_icns.exists():
+                shutil.copy(app_icns, profile_dir / "electron.icns")
+                shutil.copy(app_icns, profile_dir / "icon-chatgpt.icns")
+            
+            # 2. Resize and generate PNGs
+            base_png = profile_dir / "icon-codex-light.png"
+            if chosen_path.suffix.lower() == ".icns":
+                # Convert icns back to png (a bit tricky), fallback to just copying if it's already a png
+                # Or just use sips to extract a png
+                sips_cmd = ["sips", "-s", "format", "png", str(chosen_path), "--out", str(base_png)]
+                subprocess.run(sips_cmd, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            else:
+                # Resize image to 512x512
+                sips_cmd = ["sips", "-z", "512", "512", str(chosen_path), "--out", str(base_png)]
+                subprocess.run(sips_cmd, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                
+            if base_png.exists():
+                shutil.copy(base_png, profile_dir / "icon-codex-dark-color.png")
+                shutil.copy(base_png, profile_dir / "icon-chatgpt.png")
+                
+            return profile_dir
+        except Exception as e:
+            logger.error("Error generating user profile: %s", e)
+            return profile_dir
 
     def select_icon_file(self) -> None:
         """Opens file dialog for user to choose custom image or .icns file with resolution check."""
@@ -819,13 +884,21 @@ class IconReplaceGUI:
                 except Exception as err:
                     logger.warning("Failed to check image dimensions: %s", err)
 
-            self.selected_icon_path = chosen_path
+            # Generate profile from the uploaded icon
+            new_profile = self._generate_user_profile(chosen_path)
+            self.selected_profile_dir = new_profile
+            
             if HAS_CUSTOMTKINTER:
                 self.icon_path_label.configure(
-                    text=f"Selected: {self.selected_icon_path.name}",
+                    text=f"Selected Profile: {self.selected_profile_dir.name}",
                     text_color="#10B981",
                 )
-            self.watcher.replacement_icon_path = self.selected_icon_path
+            
+            if hasattr(self.watcher, "profile_dir"):
+                self.watcher.profile_dir = self.selected_profile_dir
+            elif hasattr(self.watcher, "replacement_icon_path"):
+                self.watcher.replacement_icon_path = self.selected_profile_dir
+                
             self._update_icon_preview()
 
     def refresh_status(self) -> None:
@@ -868,7 +941,7 @@ class IconReplaceGUI:
             return
 
         # Check if already patched to prevent redundant backups
-        if status == AppUpdateWatcher.STATUS_CODEX_INSTALLED and self.selected_icon_path is None:
+        if status == AppUpdateWatcher.STATUS_CODEX_INSTALLED and self.selected_profile_dir is None:
             repatch = messagebox.askyesno(
                 "Already Patched",
                 "Codex.app is already installed and running dark mode branding.\n\n"
@@ -891,10 +964,15 @@ class IconReplaceGUI:
                 logger.info("User cancelled dark mode patching due to app conflict.")
                 return
 
-        icon_file = self.selected_icon_path or self.watcher.replacement_icon_path
-        if icon_file is None or not icon_file.exists():
-            # System icon fallback
-            icon_file = Path("/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/GenericApplicationIcon.icns")
+        profile_dir = self.selected_profile_dir
+        if not profile_dir and hasattr(self.watcher, "profile_dir"):
+            profile_dir = self.watcher.profile_dir
+        elif not profile_dir and hasattr(self.watcher, "replacement_icon_path"):
+            profile_dir = self.watcher.replacement_icon_path
+
+        if profile_dir is None or not profile_dir.exists():
+            messagebox.showerror("Error", "No profile directory found to patch from.")
+            return
 
         if HAS_CUSTOMTKINTER:
             self.btn_apply.configure(state="disabled", text="⏳ Applying Icon Patch...")
@@ -902,7 +980,7 @@ class IconReplaceGUI:
         def _worker():
             success = patch_app_icon(
                 target_app_path=app_path,
-                replacement_icon_path=icon_file,
+                profile_dir=profile_dir,
                 rename_to_codex=True,
                 backup_registry=self.backup_registry,
                 refresh_dock=True,

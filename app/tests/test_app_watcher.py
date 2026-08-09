@@ -35,7 +35,9 @@ class TestAppUpdateWatcher(unittest.TestCase):
 
         # Generate a test icon image
         sys_icns = Path("/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/GenericApplicationIcon.icns")
-        self.test_png = self.tmp_path / "test_icon.png"
+        self.test_profile_dir = self.tmp_path / "test_profile"
+        self.test_profile_dir.mkdir(parents=True, exist_ok=True)
+        self.test_png = self.test_profile_dir / "icon-codex-light.png"
         sips_cmd = [
             "sips",
             "-s",
@@ -141,7 +143,7 @@ class TestAppUpdateWatcher(unittest.TestCase):
         callback_mock = MagicMock()
         watcher = AppUpdateWatcher(
             watch_dirs=[self.apps_dir],
-            replacement_icon_path=self.test_png,
+            profile_dir=self.test_profile_dir,
             auto_repair_enabled=True,
             notifications_enabled=True,
             backup_registry=self.backup_registry,
@@ -187,7 +189,7 @@ class TestAppUpdateWatcher(unittest.TestCase):
         mock_notify.return_value = True
         watcher = AppUpdateWatcher(
             watch_dirs=[self.apps_dir],
-            replacement_icon_path=self.test_png,
+            profile_dir=self.test_profile_dir,
             auto_repair_enabled=True,
             notifications_enabled=True,
             backup_registry=self.backup_registry,

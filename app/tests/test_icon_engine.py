@@ -48,6 +48,10 @@ class TestIconEngine(unittest.TestCase):
         res = subprocess.run(sips_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         if res.returncode != 0:
             self.fail(f"Failed to generate test PNG image: {res.stderr}")
+            
+        self.test_profile_dir = self.tmp_path / "test_profile"
+        self.test_profile_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy(self.input_png, self.test_profile_dir / "icon-codex-light.png")
 
         # Setup mock app bundle
         self.app_dir = self.tmp_path / "ChatGPT.app"
@@ -84,7 +88,7 @@ class TestIconEngine(unittest.TestCase):
     def test_patch_app_icon(self):
         success = patch_app_icon(
             target_app_path=self.app_dir,
-            replacement_icon_path=self.input_png,
+            profile_dir=self.test_profile_dir,
             rename_to_codex=True,
             backup_registry=self.backup_registry,
         )
@@ -111,7 +115,7 @@ class TestIconEngine(unittest.TestCase):
     def test_patch_app_icon_without_rename(self):
         success = patch_app_icon(
             target_app_path=self.app_dir,
-            replacement_icon_path=self.input_png,
+            profile_dir=self.test_profile_dir,
             rename_to_codex=False,
             backup_registry=self.backup_registry,
         )
